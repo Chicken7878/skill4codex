@@ -1,0 +1,4 @@
+interface:
+  display_name: "STA Subagent Flow"
+  short_description: "为指定顶层模块生成SDC、运行make sta并分析时序报告"
+  default_prompt: "分析当前RTL工程，自动生成默认SDC，执行make sta，并总结result中的关键时序指标与整改建议。"
