@@ -1,7 +1,7 @@
 interface:
   display_name: "Verilog RTL Workflow"
   short_description: "Analyze, implement, lint, testbench, and simulate RTL."
-  default_prompt: "Use $verilog-rtl-workflow to analyze the module contract, write or revise RTL, run lint, add a testbench, and complete behavioral simulation."
+  default_prompt: "Use $verilog-rtl-workflow to analyze the module contract, delegate bounded RTL execution work to a subagent, then write or revise RTL, run lint, add a testbench, and complete behavioral simulation."
 
 policy:
   allow_implicit_invocation: true

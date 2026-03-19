@@ -1,9 +1,11 @@
 ---
 name: verilog-rtl-workflow
-description: "Use this skill when the user describes hardware behavior in natural language and needs a strict RTL delivery flow: derive a structured spec, plan the architecture, implement RTL, run lint, write a testbench, and complete behavioral simulation. Trigger it for module-level digital design tasks, interface/protocol decomposition, combinational or sequential RTL coding, TB scaffolding, waveform-driven debug, and regression-style validation with tools such as iverilog, verilator, or vvp."
+description: "Use this skill when the user describes hardware behavior in natural language and needs a strict RTL delivery flow: derive a structured spec, plan the architecture, implement RTL, run lint, write a testbench, and complete behavioral simulation. Trigger it for module-level digital design tasks, interface/protocol decomposition, combinational or sequential RTL coding, TB scaffolding, waveform-driven debug, and regression-style validation with tools such as iverilog, verilator, or vvp. When using this skill, spawn a subagent to execute the bounded implementation and verification work, then integrate the result in the main agent."
 ---
 
 # Verilog RTL Workflow
+
+Use this skill to drive a reusable RTL delivery workflow for natural-language hardware requests.
 
 ## When to use
 
@@ -18,6 +20,18 @@ Use this skill when the user starts from a natural-language hardware requirement
 
 Do not skip or reorder stages unless the user explicitly asks to do so.
 
+## Mandatory collaboration pattern
+
+Spawn one subagent for bounded execution work whenever this skill is used.
+
+Recommended split:
+
+- Main agent: inspect the request, confirm assumptions, decide language and scope, and integrate the final result.
+- Subagent: execute the stage flow, write or revise files, run lint or simulation commands, and report structured results back.
+
+Do not delegate the final user-facing conclusion. Keep that in the main agent.
+If the current environment does not expose a subagent tool, state that limitation explicitly and continue locally with the same stage discipline.
+
 ## Global rules
 
 - Language choice is mandatory: use the user-specified language exactly; if unspecified, default to plain Verilog and state that assumption explicitly
@@ -25,6 +39,7 @@ Do not skip or reorder stages unless the user explicitly asks to do so.
 - Do not move to TB authoring while unresolved lint findings still indicate likely RTL correctness issues
 - Default waveform output path is `build/<tb_module>.vcd`
 - Prefer the smallest correct implementation that satisfies the requirement
+- Prefer using `scripts/verilog_flow.sh` when it matches the task instead of rebuilding the same command sequence manually
 
 Read extra references only when needed:
 
@@ -56,6 +71,7 @@ Required output:
 Exit condition:
 
 - Module boundary, reset behavior, timing intent, corner cases, and language choice are explicit enough to review
+- If critical requirements are missing, the main agent should surface the assumption before the subagent proceeds
 
 ### Stage 2. Architecture plan
 
@@ -100,6 +116,7 @@ Required output:
 Exit condition:
 
 - No unresolved lint findings that plausibly indicate RTL correctness issues
+- If lint is unavailable, state the missing tool or environment limit explicitly and continue only when the user still wants the reduced validation path
 
 ### Stage 5. Testbench
 
@@ -142,3 +159,18 @@ Unless the user asks otherwise, final delivery should include:
 - Simulation command and result
 - Waveform path
 - Assumptions and remaining risk
+
+## Resources
+
+Use these bundled resources directly instead of re-deriving the same structure each time:
+
+- `scripts/verilog_flow.sh`
+- `references/analysis-checklist.md`
+- `references/architecture-plan.md`
+- `references/language-rules.md`
+- `references/simulation-conventions.md`
+- `references/stage-1-contract-template.md`
+- `references/stage-2-architecture-template.md`
+- `references/testbench-patterns.md`
+- `references/verilog-rtl-template.v`
+- `references/verilog-testbench-template.v`
