@@ -6,6 +6,7 @@ description: Generate a default `constraint/default.sdc` for a specified RTL top
 # STA Flow
 
 Use this skill to drive a local RTL synthesis and STA loop with the repository's `make sta` entry.
+If the design root does not contain a `Makefile`, bootstrap one automatically before running the flow.
 
 Keep the workflow strict:
 1. Confirm the design root and top module.
@@ -25,7 +26,7 @@ Prefer these inputs from the user:
 - target frequency in MHz
 
 If some inputs are missing, infer them locally:
-- Read the local `Makefile` first.
+- Read the local `Makefile` first. If it does not exist, generate a minimal one for the detected design root.
 - If the top module is missing, inspect `DESIGN` in the make variables.
 - If the clock port is missing, inspect the RTL top interface and choose the most likely clock port.
 - If the frequency is missing, use the flow default from the environment or `Makefile`.
@@ -34,11 +35,19 @@ Always state inferred assumptions explicitly in the response.
 
 ### 2. Use subagents when available
 
-If the current session explicitly permits subagents, prefer splitting the work:
-- Use one subagent to inspect the RTL top module and identify clock, reset, input, and output ports.
-- Use another subagent to inspect `result/` artifacts after `make sta` and extract key metrics and violations.
+If the current session explicitly permits subagents, you must split the work instead of doing the full flow only in the main agent.
 
-Keep ownership disjoint. Do not ask one subagent to both infer constraints and interpret reports if the work can be split cleanly.
+Minimum requirement:
+- If the task includes RTL inspection, top-level port inference, clock/reset identification, or SDC generation, start one subagent for RTL/interface inspection.
+- If the task includes `make sta`, `result/` report reading, or timing/power/area summary, start one subagent for report inspection.
+
+Split rules:
+- When both RTL inspection and report analysis are needed, you must start two subagents with disjoint ownership.
+- When only one of those two workstreams is present, you must still start at least one subagent for that workstream.
+- The main agent should coordinate inputs, run the bundled script or shell commands, and integrate subagent results into the final answer.
+
+Keep ownership disjoint. Do not ask one subagent to both infer constraints and interpret reports when two-subagent splitting is possible.
+Only skip subagents when the current session does not permit them.
 
 ### 3. Generate SDC
 
@@ -50,6 +59,7 @@ python3 scripts/run_sta_flow.py --design-home <design-root> --top <top-module>
 
 The script:
 - scans `rtl/` for the target module
+- detects whether `<design-root>/Makefile` exists and bootstraps one when missing
 - supports ANSI and common non-ANSI top-level port declarations
 - infers interface directions and bus widths
 - detects likely clock, reset, test, and async-style ports

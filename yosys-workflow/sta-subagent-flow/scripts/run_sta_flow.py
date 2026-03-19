@@ -23,6 +23,7 @@ from rtl_parser import (
     rtl_files,
 )
 from sdc_builder import infer_clock_freq, parse_make_vars, run_make_target, write_sdc
+from sdc_builder import ensure_makefile
 from sta_types import StaFlowError
 
 
@@ -94,11 +95,15 @@ def build_payload(
     failure: Dict[str, str],
     stdout: str,
     stderr: str,
+    makefile_path: Path,
+    makefile_generated: bool,
 ) -> Dict[str, object]:
     return {
         "summary_path": str(summary_path),
         "sdc_path": str(sdc_path),
         "result_dir": str(result_dir),
+        "makefile_path": str(makefile_path),
+        "makefile_generated": makefile_generated,
         "clock_freq_mhz": clock_freq_mhz,
         "ports": [asdict(port) for port in ports],
         "sdc_meta": sdc_meta,
@@ -135,6 +140,7 @@ def main() -> int:
     design_home = Path(args.design_home).resolve()
     rtl_dir = design_home / "rtl"
     make_env = os.environ.copy()
+    make_env["DESIGN"] = args.top
     if args.clock_freq_mhz is not None:
         make_env["CLK_FREQ_MHZ"] = f"{args.clock_freq_mhz:g}"
     if args.clock_port:
@@ -145,6 +151,7 @@ def main() -> int:
     make_rc = 1
 
     try:
+        makefile_path, makefile_generated = ensure_makefile(design_home, args.top)
         make_vars = parse_make_vars(design_home, env=make_env)
         sdc_path = Path(make_vars["SDC_FILE"]).resolve()
         result_dir = Path(make_vars["RESULT_DIR"]).resolve()
@@ -209,6 +216,8 @@ def main() -> int:
             failure=failure,
             stdout=stdout,
             stderr=stderr,
+            makefile_path=makefile_path,
+            makefile_generated=makefile_generated,
         )
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return 0 if make_rc == 0 else make_rc
@@ -223,6 +232,8 @@ def main() -> int:
             "summary_path": str(summary_path),
             "sdc_path": str(sdc_path),
             "result_dir": str(result_dir),
+            "makefile_path": str(design_home / "Makefile"),
+            "makefile_generated": False,
             "make_return_code": make_rc,
             "failure": {"stage": exc.stage, "message": exc.message},
             "stdout_tail": stdout.splitlines()[-20:],

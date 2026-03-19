@@ -7,6 +7,18 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from sta_types import ClassifiedPorts, Port, StaFlowError
 
 
+MAKEFILE_TEMPLATE = """FLOW_HOME ?= {flow_home}
+DESIGN_HOME := $(CURDIR)
+DESIGN ?= {design}
+RTL_DIR ?= $(DESIGN_HOME)/rtl
+SDC_FILE ?= $(DESIGN_HOME)/constraint/default.sdc
+CLK_FREQ_MHZ ?= 500
+RESULT_DIR ?= $(DESIGN_HOME)/result/$(DESIGN)-$(CLK_FREQ_MHZ)MHz
+
+include $(FLOW_HOME)/Makefile
+"""
+
+
 def run_cmd(
     cmd: Sequence[str],
     cwd: Path,
@@ -24,29 +36,83 @@ def run_cmd(
     )
 
 
+def read_flow_home_from_makefile(makefile_path: Path) -> Optional[str]:
+    if not makefile_path.exists():
+        return None
+    text = makefile_path.read_text()
+    match = re.search(r"^\s*FLOW_HOME\s*[:?]?=\s*(.+?)\s*$", text, flags=re.MULTILINE)
+    if not match:
+        return None
+    return match.group(1).strip()
+
+
+def infer_flow_home() -> Optional[str]:
+    env_flow_home = os.environ.get("FLOW_HOME")
+    if env_flow_home:
+        return env_flow_home
+    skill_repo_makefile = Path(__file__).resolve().parents[2] / "Makefile"
+    return read_flow_home_from_makefile(skill_repo_makefile)
+
+
+def ensure_makefile(design_home: Path, top: str) -> Tuple[Path, bool]:
+    makefile_path = design_home / "Makefile"
+    if makefile_path.exists():
+        return makefile_path, False
+
+    flow_home = infer_flow_home()
+    if not flow_home:
+        raise StaFlowError(
+            "make_setup",
+            "Makefile is missing and FLOW_HOME could not be inferred. Set FLOW_HOME or create a project Makefile first.",
+        )
+
+    makefile_path.write_text(
+        MAKEFILE_TEMPLATE.format(flow_home=flow_home, design=top)
+    )
+    return makefile_path, True
+
+
 def parse_make_vars(
     design_home: Path, env: Optional[Dict[str, str]] = None
 ) -> Dict[str, str]:
+    vars_map: Dict[str, str] = {}
+
     try:
         result = run_cmd(["make", "print-vars"], cwd=design_home, env=env)
+        for line in result.stdout.splitlines():
+            if "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            vars_map[key.strip()] = value.strip()
+    except subprocess.CalledProcessError:
+        vars_map = {}
+
+    required = ("RESULT_DIR", "SDC_FILE")
+    if all(key in vars_map for key in required):
+        return vars_map
+
+    try:
+        result = run_cmd(["make", "-pn"], cwd=design_home, env=env)
     except subprocess.CalledProcessError as exc:
         raise StaFlowError(
             "make_setup",
-            f"`make print-vars` failed in {design_home}: {(exc.stderr or exc.stdout).strip()}",
+            f"`make print-vars` and `make -pn` both failed in {design_home}: {(exc.stderr or exc.stdout).strip()}",
         ) from exc
 
-    vars_map: Dict[str, str] = {}
+    vars_map = {}
+    pattern = re.compile(r"^([A-Z_][A-Z0-9_]*)\s*(?::|[+?])?=\s*(.*)$")
     for line in result.stdout.splitlines():
-        if "=" not in line:
+        match = pattern.match(line)
+        if not match:
             continue
-        key, value = line.split("=", 1)
+        key, value = match.groups()
         vars_map[key.strip()] = value.strip()
     required = ("RESULT_DIR", "SDC_FILE")
     missing = [key for key in required if key not in vars_map]
     if missing:
         raise StaFlowError(
             "make_setup",
-            f"`make print-vars` missing required variables: {', '.join(missing)}",
+            f"Unable to resolve required make variables: {', '.join(missing)}",
         )
     return vars_map
 
